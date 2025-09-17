@@ -61,7 +61,7 @@ def lr_scheduler(
 def train(rank, world_size, wandb_run, args): # TODO: make args instance
     setup_ddp(rank, world_size)
     tokenizer = tiktoken.get_encoding("gpt2")
-    train_dataloader, test_dataloader = get_train_test_dataloader(tokenizer, CONTEXT_WINDOW)
+    train_dataloader, test_dataloader = get_train_test_dataloader(tokenizer, CONTEXT_WINDOW, args)
     model = DDP(ScratchTransformer(tokenizer).to(rank), device_ids=[rank], find_unused_parameters=True)
     
     if rank == 0:

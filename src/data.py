@@ -1,9 +1,9 @@
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
 
-def get_train_test_dataloader(tokenizer, context_window):
+def get_train_test_dataloader(tokenizer, context_window, args):
     train_dataset = HPDataset(
         tokenizer, 
         context_window=context_window,
