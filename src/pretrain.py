@@ -2,7 +2,7 @@ import tiktoken
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from data import HPDataset, get_train_test_dataloader
+from data import get_train_test_dataloader
 from model import ScratchTransformer, CONTEXT_WINDOW
 import wandb
 import os
@@ -105,8 +105,8 @@ def train(rank, world_size, wandb_run, args): # TODO: make args instance
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--batch_size", type=int, default=4)
-    parser.add_argument("--n_epochs", type=int, default=2)
+    parser.add_argument("--batch_size", type=int, default=1)
+    parser.add_argument("--n_epochs", type=int, default=1)
     parser.add_argument("--num_test_generation", type=int, default=1)
     parser.add_argument("--validate_every", type=int, default=100)
     parser.add_argument("--num_validation_batches", type=int, default=20)

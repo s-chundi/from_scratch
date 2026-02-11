@@ -1,10 +1,11 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.distributed import DistributedSampler
-
+from datasets import load_dataset
+import tiktoken
 
 def get_train_test_dataloader(tokenizer, context_window, args):
-    train_dataset = HPDataset(
+    train_dataset = SmollmDataset(
         tokenizer, 
         context_window=context_window,
         split="train", 
@@ -16,7 +17,7 @@ def get_train_test_dataloader(tokenizer, context_window, args):
         pin_memory=True,
         sampler=DistributedSampler(train_dataset, shuffle=True),
     )
-    test_dataset = HPDataset(
+    test_dataset = SmollmDataset(
         tokenizer, 
         context_window=context_window,
         split="test", 
@@ -31,36 +32,42 @@ def get_train_test_dataloader(tokenizer, context_window, args):
     return train_dataloader, test_dataloader
 
 
-class HPDataset(Dataset):
+class SmollmDataset(Dataset):
     def __init__(
         self,
         tokenizer,
         context_window,
-        split="all",
-        txt_file="src/harry_potter.txt",
+        split="train",
         device=torch.device("cpu"),
     ):
         super().__init__()
+        ds = load_dataset("HuggingFaceTB/smollm-corpus", "cosmopedia-v2", split="train", num_proc=100)
         self.tokenizer = tokenizer
-        with open(txt_file, "r") as f:
-            raw_text = f.read()
-            
-        train_len = int(len(raw_text) * 0.8)
-        if split == "train":
-            text = raw_text[:train_len]
+        if split == "train": # TODO: make this dynamic
+            ds = ds.select(range(500))
         elif split == "test":
-            text = raw_text[train_len:]
-        elif split == "all":
-            text = raw_text
+            ds = ds.select(range(500, 600))
         else:
-            raise ValueError("Expected split to be one of ['train', 'test', 'all']")
+            raise ValueError(f"Invalid split: {split}")
         
-        self.token_ids = self.tokenizer.encode(text)
+        self.ds = ds.map(
+            self.tokenize, 
+            batched=True, 
+            num_proc=100, 
+            remove_columns=["prompt", "text", "token_length", "audience", "format", "seed_data"])
+
         self.context_window = context_window
         self.device = device
+    
+    def tokenize(self, sample):
+        texts = [sample["prompt"][i] + sample["text"][i] for i in range(len(sample["prompt"]))]
+        token_ids = self.tokenizer.encode_batch(texts)
+        return {
+            "token_ids": token_ids,
+        }
+        
     def __len__(self):
-        return len(self.token_ids) - self.context_window
+        return len(self.ds)
     
     def __getitem__(self, idx):
-        return torch.tensor(self.token_ids[idx:idx + self.context_window + 1], device=self.device)
-        
+        return torch.tensor(self.ds[idx]["token_ids"], device=self.device)
