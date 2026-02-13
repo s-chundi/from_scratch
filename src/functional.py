@@ -1,0 +1,109 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import einops
+import math
+
+class LinearFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, inp, weight, bias):
+        ctx.save_for_backward(inp, weight)
+        
+        return inp @ weight + bias
+    
+    @staticmethod
+    def backward(ctx, dout):
+        inp, weight = ctx.saved_tensors
+        
+        din, dweight, dbias = None, None, None
+        
+        if ctx.needs_input_grad[0]:
+            din = einops.einsum(
+                dout, weight, "... out, inp out -> ... inp"
+            )
+        if ctx.needs_input_grad[1]:
+            dweight = einops.einsum(
+                dout, inp, "... out, ... inp -> inp out"
+            )
+        if ctx.needs_input_grad[2]:
+            dbias = einops.reduce(dout, "... out -> 1 out", "sum")
+            
+        return din, dweight, dbias
+    
+class LinearModule(nn.Module):
+    def __init__(
+        self,
+        input_dim,
+        output_dim
+    ):
+        super().__init__()
+        self.input_dim = input_dim
+        
+        self.weight = nn.Parameter(torch.empty(input_dim, output_dim))
+        self.bias = nn.Parameter(torch.empty(1, output_dim))
+        
+        self.reset_parameters()
+        
+    def reset_parameters(self):
+        scale = 1 / math.sqrt(self.input_dim)
+        nn.init.uniform_(self.weight, -scale, scale)
+        nn.init.uniform_(self.bias, -scale, scale)
+        
+    def forward(self, inp):
+        return LinearFunction.apply(inp, self.weight, self.bias)
+    
+class RMSNormFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, inp, gamma):
+        rms = torch.sqrt(1e-8 + (inp ** 2).mean(dim=-1, keepdim=True))
+        ctx.save_for_backward(inp, gamma, rms)
+        return gamma * (inp / rms)
+    
+    @staticmethod
+    def backward(ctx, dout):
+        inp, gamma, rms = ctx.saved_tensors
+        x_norm = inp / rms
+        grad_x_norm = dout * gamma
+        
+        dinp, dgamma = None, None
+        
+        if ctx.needs_input_grad[0]:
+            dinp = (
+                grad_x_norm - x_norm * (x_norm * grad_x_norm).mean(dim=-1, keepdim=True)
+            ) / rms
+        if ctx.needs_input_grad[1]:
+            dgamma = einops.reduce(dout * x_norm, "... embed_dim -> embed_dim", "sum")
+            
+        return dinp, dgamma
+    
+class RMSNormModule(nn.Module):
+    def __init__(self, embed_dim):
+        super().__init__()
+        self.gamma = nn.Parameter(torch.ones(embed_dim,))
+        
+    def forward(self, inp):
+        return RMSNormFunction.apply(inp, self.gamma)
+
+class SILUFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, inp):
+        ctx.save_for_backward(inp)
+        return inp * 1 / (1 + torch.exp(-inp))
+    
+    @staticmethod
+    def backward(ctx, dout):
+        inp, = ctx.saved_tensors
+        sigmoid_x = 1 / (1 + torch.exp(-inp))
+
+        if ctx.needs_input_grad[0]:
+            return dout * sigmoid_x * (1 + inp * (1 - sigmoid_x))
+        else:
+            return None
+
+class SILUModule(nn.Module):
+    def __init__(self):
+        super().__init__()
+        
+    def forward(self, inp):
+        return SILUFunction.apply(inp)
+        
