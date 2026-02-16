@@ -106,4 +106,47 @@ class SILUModule(nn.Module):
         
     def forward(self, inp):
         return SILUFunction.apply(inp)
+
+class EmbeddingFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, token_ids, emb_matrix):
+        """
+        Args: 
+            token_ids: longtensor of shape (B, S)
+            emb_matrix: weight matrix of shape (n_vocab, D)
+        Returns:
+            tensor of shape B, S, D
+        """
+        ctx.save_for_backward(token_ids, emb_matrix)
+        return emb_matrix[token_ids, :]
+
+    def backward(ctx, dout):
+        token_ids, emb_matrix = ctx.saved_tensors
+        nv, D = emb_matrix.shape
+        demb = None
+        if ctx.needs_input_grad[1]:
+            demb = torch.zeros_like(emb_matrix)
+            grads_flattened = dout.reshape(-1, D)
+            demb.index_add_(0, token_ids.view(-1), grads_flattened)
+            
+        return None, demb
+    
+class EmbeddingModule(nn.Module):
+    def __init__(
+        self,
+        num_embeddings,
+        embedding_dim,
+    ):
+        super().__init__()
+        self.embed_dim = embedding_dim
+        self.num_embeddings = num_embeddings
         
+        self.weight = nn.Parameter(torch.empty(num_embeddings, embedding_dim))
+        self.reset_parameters()
+        
+    def reset_parameters(self):
+        scale = 1 / math.sqrt(self.embed_dim)
+        nn.init.uniform_(self.weight, -scale, scale)
+        
+    def forward(self, inp):
+        return EmbeddingFunction.apply(inp, self.weight)

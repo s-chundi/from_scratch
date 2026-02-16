@@ -18,19 +18,23 @@ Goals:
 
     a. ~~Multiheaded Attention~~
 
-    b. ~~Sliding Window Attention~~
+3. Implement Forward and Backward pass for each module
 
-    c. Grouped Query Attention
-3. Implement various post-training techniques with simple reward functions
+    a. ~~Linear~~
+
+    b. ~~RMSNorm~~
+
+    c. ~~SILU~~
+
+    d. Embedding
     
-    a. RLHF
+    e. Multiheaded Attention
 
-    b. DPO
+4. Other things:
+
+    a. KV caching
+
+    b. Padding/Packing
 
     c. GRPO
-
-4. Add features/interesting modules
     
-    a. Byte Latent Transformer
-    
-5. Train on more high quality general datasets

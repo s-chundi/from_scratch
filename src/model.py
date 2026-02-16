@@ -86,8 +86,8 @@ class ScratchTransformer(nn.Module):
                 for i in range(num_blocks)
             ]
         )
-        self.final_ln = nn.LayerNorm(embed_dim)
-        self.linear = nn.Linear(embed_dim, tokenizer.n_vocab)
+        self.final_ln = RMSNormModule(embed_dim)
+        self.linear = LinearModule(embed_dim, tokenizer.n_vocab)
         
     def forward(self, x):
         """
