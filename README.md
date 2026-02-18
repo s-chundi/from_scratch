@@ -26,7 +26,7 @@ Goals:
 
     c. ~~SILU~~
 
-    d. Embedding
+    d. Embedding (needs testing)
     
     e. Multiheaded Attention
 

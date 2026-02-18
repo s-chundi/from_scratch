@@ -136,6 +136,7 @@ class EmbeddingModule(nn.Module):
         self,
         num_embeddings,
         embedding_dim,
+        **kwargs,
     ):
         super().__init__()
         self.embed_dim = embedding_dim
@@ -150,3 +151,60 @@ class EmbeddingModule(nn.Module):
         
     def forward(self, inp):
         return EmbeddingFunction.apply(inp, self.weight)
+    
+class MHAFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, qry, k, v, key_pad_mask):
+        """
+        Args:
+            Q, K, V with shape B, S, Nh, D_attn
+            key_pad_mask will be used in the future
+            
+        Returns:
+            tensor with shape B, S, Nh, D_attn
+        """
+        attn_scores = einops.einsum(qry, k, "... sq nh d, ... sk nh d -> ... nh sq sk") / math.sqrt(x.shape[-1])
+        causal_attn_mask = torch.triu(
+            torch.ones(
+                1,
+                qry.shape[1],
+                k.shape[1],
+                dtype=torch.bool,
+                device=x.device
+            ),
+            diagonal=1
+        )
+        
+        attn_scores.masked_fill_(key_pad_mask[:, None, None, :], -1e10)
+        attn_scores.masked_fill_(causal_attn_mask, -1e10)
+        attn_weights = F.softmax(attn_scores, dim=-1)
+        out = einops.einsum(attn_weights, v, "... nh sq sk, ... sk nh d -> ... sq nh d")
+        out = einops.rearrange(out, "... sq nh d -> ... sq (nh d)")
+        
+        ctx.save_for_backward(attn_weights, v)
+        return out
+    
+    @staticmethod
+    def backward(ctx, dout):
+        attn_weights, v = ctx.saved_tensors
+        
+        dqry, dk, dv, dkpm = None, None, None, None
+        
+        if ctx.needs_input_grad[2]:
+            dv = einops.einsum(
+                attn_weights, dout,
+                "... nh sq sk, ... sq (nh d) -> ... sk nh d"
+                nh = attn_weights.shape[-2]
+            )
+            
+        dsoftmax = einops.einsum(
+            v, dout,
+            "... sk nh d, ... sq (nh d) -> ... nh sq sk"
+            nh = attn_weights.shape[-2]
+        )
+        if ctx.needs_input_grad[0]:
+            ...
+        if ctx.needs_input_grad[1]:
+            ...
+            
+        return dqry, dk, dv, dkpm

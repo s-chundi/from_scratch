@@ -37,6 +37,7 @@ class CustomTransformerBlock(nn.Module):
         kv = self.kv_linear(ln1x)
         kv = einops.rearrange(kv, "... sq (twoxnh dattn) -> ... sq twoxnh dattn", twoxnh=self.n_head*2)
         k, v = torch.chunk(kv, 2, dim=-2)
+        breakpoint()
         attn_scores = einops.einsum(qry, k, "... sq nh d, ... sk nh d -> ... nh sq sk") / math.sqrt(x.shape[-1])
         causal_attn_mask = torch.triu(
             torch.ones(
@@ -54,7 +55,8 @@ class CustomTransformerBlock(nn.Module):
         attn_weights = F.softmax(attn_scores, dim=-1)
         out = einops.einsum(attn_weights, v, "... nh sq sk, ... sk nh d -> ... sq nh d")
         out = einops.rearrange(out, "... sq nh d -> ... sq (nh d)")
-        return self.mlp(out) + x
+        x = out + x
+        return self.mlp(x) + x
         
      
 class ScratchTransformer(nn.Module):
@@ -64,19 +66,17 @@ class ScratchTransformer(nn.Module):
         num_blocks=8,
         embed_dim=512,
         context_win=CONTEXT_WINDOW,
-        experimental=False,
     ):
         super().__init__()
         self.tokenizer=tokenizer
         self.embed_dim = embed_dim
-        self.embed = nn.Embedding(
+        self.embed = EmbeddingModule(
             num_embeddings=tokenizer.n_vocab, 
             embedding_dim=self.embed_dim, 
             padding_idx=tokenizer.eot_token
         )
-        self.experimental = experimental
         self.context_win = CONTEXT_WINDOW
-        self.pos_emb = nn.Embedding(
+        self.pos_emb = EmbeddingModule(
             num_embeddings=context_win,
             embedding_dim=embed_dim
         )
@@ -119,11 +119,18 @@ class ScratchTransformer(nn.Module):
         return out_texts
     
 if __name__ == "__main__":
-    # For testing
-    custom_block = CustomTransformerBlock(embed_dim=4)
-    x = torch.randn(2, 3, 4)
-    kpm = torch.zeros(2, 3, dtype=bool)
-    out = custom_block(x, kpm)
-    loss_dummy = out.sum()
-    loss_dummy.backward()
+    import tiktoken
+    tokenizer = tiktoken.get_encoding("gpt2")
+
+    model = ScratchTransformer(tokenizer=tokenizer, num_blocks=2, embed_dim=64, context_win=128)
+    token_ids = torch.randint(1, tokenizer.n_vocab, (2, 16))
+
+    # Forward
+    logits, metadata = model(token_ids)
+    print(f"Forward: input {token_ids.shape} -> output {logits.shape}")
+
+    # Backward
+    loss = F.cross_entropy(logits[:, :-1].reshape(-1, tokenizer.n_vocab), token_ids[:, 1:].reshape(-1))
+    loss.backward()
+    print(f"Backward: loss={loss.item():.4f}")
     
