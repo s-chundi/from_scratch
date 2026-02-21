@@ -26,9 +26,9 @@ Goals:
 
     c. ~~SILU~~
 
-    d. Embedding (needs testing)
+    d. ~~Embedding~~
     
-    e. Multiheaded Attention
+    e. ~~Multiheaded Attention~~
 
 4. Other things:
 
@@ -37,4 +37,6 @@ Goals:
     b. Padding/Packing
 
     c. GRPO
+
+    d. Flash Attention
     

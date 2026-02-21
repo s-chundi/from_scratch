@@ -120,6 +120,7 @@ class EmbeddingFunction(torch.autograd.Function):
         ctx.save_for_backward(token_ids, emb_matrix)
         return emb_matrix[token_ids, :]
 
+    @staticmethod
     def backward(ctx, dout):
         token_ids, emb_matrix = ctx.saved_tensors
         nv, D = emb_matrix.shape
@@ -163,14 +164,14 @@ class MHAFunction(torch.autograd.Function):
         Returns:
             tensor with shape B, S, Nh, D_attn
         """
-        attn_scores = einops.einsum(qry, k, "... sq nh d, ... sk nh d -> ... nh sq sk") / math.sqrt(x.shape[-1])
+        attn_scores = einops.einsum(qry, k, "... sq nh d, ... sk nh d -> ... nh sq sk") / math.sqrt(k.shape[-1])
         causal_attn_mask = torch.triu(
             torch.ones(
                 1,
                 qry.shape[1],
                 k.shape[1],
                 dtype=torch.bool,
-                device=x.device
+                device=k.device
             ),
             diagonal=1
         )
@@ -179,32 +180,40 @@ class MHAFunction(torch.autograd.Function):
         attn_scores.masked_fill_(causal_attn_mask, -1e10)
         attn_weights = F.softmax(attn_scores, dim=-1)
         out = einops.einsum(attn_weights, v, "... nh sq sk, ... sk nh d -> ... sq nh d")
-        out = einops.rearrange(out, "... sq nh d -> ... sq (nh d)")
         
-        ctx.save_for_backward(attn_weights, v)
+        ctx.save_for_backward(attn_weights, v, k, qry)
         return out
     
     @staticmethod
     def backward(ctx, dout):
-        attn_weights, v = ctx.saved_tensors
-        
+        attn_weights, v, k, qry = ctx.saved_tensors
+        dim = v.shape[-1]
         dqry, dk, dv, dkpm = None, None, None, None
         
         if ctx.needs_input_grad[2]:
             dv = einops.einsum(
                 attn_weights, dout,
-                "... nh sq sk, ... sq (nh d) -> ... sk nh d"
-                nh = attn_weights.shape[-2]
+                "... nh sq sk, ... sq nh d -> ... sk nh d",
             )
             
-        dsoftmax = einops.einsum(
+        dattn_weights = einops.einsum(
             v, dout,
-            "... sk nh d, ... sq (nh d) -> ... nh sq sk"
-            nh = attn_weights.shape[-2]
+            "... sk nh d, ... sq nh d -> ... nh sq sk",
         )
+        dlss = einops.einsum(
+            attn_weights, dattn_weights, 
+            "... sq sk, ... sq sk -> ... sq",
+        ).unsqueeze(dim=-1)
+        dattn_scores = attn_weights * (dattn_weights - dlss)
         if ctx.needs_input_grad[0]:
-            ...
+            dqry = einops.einsum(
+                dattn_scores, k, 
+                "... nh sq sk, ... sk nh d -> ... sq nh d"
+            ) / math.sqrt(dim)
         if ctx.needs_input_grad[1]:
-            ...
+            dk = einops.einsum(
+                dattn_scores, qry, 
+                "... nh sq sk, ... sq nh d -> ... sk nh d"
+            ) / math.sqrt(dim)
             
         return dqry, dk, dv, dkpm

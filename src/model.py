@@ -37,23 +37,7 @@ class CustomTransformerBlock(nn.Module):
         kv = self.kv_linear(ln1x)
         kv = einops.rearrange(kv, "... sq (twoxnh dattn) -> ... sq twoxnh dattn", twoxnh=self.n_head*2)
         k, v = torch.chunk(kv, 2, dim=-2)
-        breakpoint()
-        attn_scores = einops.einsum(qry, k, "... sq nh d, ... sk nh d -> ... nh sq sk") / math.sqrt(x.shape[-1])
-        causal_attn_mask = torch.triu(
-            torch.ones(
-                1,
-                qry.shape[1],
-                k.shape[1],
-                dtype=torch.bool,
-                device=x.device
-            ),
-            diagonal=1
-        )
-        
-        attn_scores.masked_fill_(key_pad_mask[:, None, None, :], -1e10)
-        attn_scores.masked_fill_(causal_attn_mask, -1e10)
-        attn_weights = F.softmax(attn_scores, dim=-1)
-        out = einops.einsum(attn_weights, v, "... nh sq sk, ... sk nh d -> ... sq nh d")
+        out = MHAFunction.apply(qry, k, v, key_pad_mask)
         out = einops.rearrange(out, "... sq nh d -> ... sq (nh d)")
         x = out + x
         return self.mlp(x) + x
@@ -97,7 +81,7 @@ class ScratchTransformer(nn.Module):
             x = x.unsqueeze(0)
         key_pad_mask = x == self.tokenizer.eot_token
         x = self.embed(x)
-        self.pos_emb(torch.arange(x.shape[-2], device=x.device))
+        x = x + self.pos_emb(torch.arange(x.shape[-2], device=x.device))
         metadata = defaultdict(float)
         for transformer in self.transformers:
             start_time = time.time()
@@ -125,12 +109,13 @@ if __name__ == "__main__":
     model = ScratchTransformer(tokenizer=tokenizer, num_blocks=2, embed_dim=64, context_win=128)
     token_ids = torch.randint(1, tokenizer.n_vocab, (2, 16))
 
-    # Forward
     logits, metadata = model(token_ids)
     print(f"Forward: input {token_ids.shape} -> output {logits.shape}")
 
-    # Backward
     loss = F.cross_entropy(logits[:, :-1].reshape(-1, tokenizer.n_vocab), token_ids[:, 1:].reshape(-1))
     loss.backward()
     print(f"Backward: loss={loss.item():.4f}")
+
+    from tests import test_mha_gradcheck
+    test_mha_gradcheck()
     
