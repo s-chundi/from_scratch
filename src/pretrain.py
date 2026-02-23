@@ -38,7 +38,11 @@ def validate(model, test_dataloader, rank, wandb_run, args):
             break
         with torch.no_grad():
             x = x.to(rank)
-            output = model.module.generate(x, num_tokens=20)
+            num_generation_tokens = 30
+            output = model.module.generate(
+                x[:, :-num_generation_tokens], 
+                num_tokens=num_generation_tokens
+            )
             output_table = wandb.Table(data=output, columns=["Generations"])
             wandb_log(wandb_run, rank, {"generations" : output_table})
     
@@ -91,7 +95,6 @@ def train(rank, world_size, wandb_run, args): # TODO: make args instance
                     "train/loss" : loss.item(), 
                     "train/grad_norm_pre_clip" : original_norm,
                     "lr" : scheduler.get_last_lr()[0],
-                    **metadata
                 }
             )
                     
@@ -106,7 +109,7 @@ def train(rank, world_size, wandb_run, args): # TODO: make args instance
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--batch_size", type=int, default=1)
-    parser.add_argument("--n_epochs", type=int, default=1)
+    parser.add_argument("--n_epochs", type=int, default=5)
     parser.add_argument("--num_test_generation", type=int, default=2)
     parser.add_argument("--validate_every", type=int, default=15)
     parser.add_argument("--num_validation_batches", type=int, default=20)

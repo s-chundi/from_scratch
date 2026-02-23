@@ -32,6 +32,8 @@ Goals:
 
 4. Other things:
 
+    a. Actually good generation quality
+    
     a. KV caching
 
     b. Padding/Packing

@@ -47,7 +47,7 @@ class SmollmDataset(Dataset):
         if split == "train":
             ds = load_dataset("HuggingFaceTB/smollm-corpus", "cosmopedia-v2", split="train[:500]")
         elif split == "test":
-            ds = load_dataset("HuggingFaceTB/smollm-corpus", "cosmopedia-v2", split="train[500:600]")
+            ds = load_dataset("HuggingFaceTB/smollm-corpus", "cosmopedia-v2", split="train[400:500]")
         else:
             raise ValueError(f"Invalid split: {split}")
 

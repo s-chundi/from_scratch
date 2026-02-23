@@ -98,8 +98,9 @@ class ScratchTransformer(nn.Module):
         
         out_texts = []
         for batch_idx in range(x.shape[0]):
-            out_string = self.tokenizer.decode(x[batch_idx, -100:].tolist())
-            out_texts.append([". Generation: " + out_string])
+            in_string = self.tokenizer.decode(x[batch_idx, -150:-num_tokens].tolist())
+            out_string = self.tokenizer.decode(x[batch_idx, -num_tokens:].tolist())
+            out_texts.append([f"Input:\n...{in_string}\nOutput:\n{out_string}"])
         return out_texts
     
 if __name__ == "__main__":
@@ -115,7 +116,4 @@ if __name__ == "__main__":
     loss = F.cross_entropy(logits[:, :-1].reshape(-1, tokenizer.n_vocab), token_ids[:, 1:].reshape(-1))
     loss.backward()
     print(f"Backward: loss={loss.item():.4f}")
-
-    from tests import test_mha_gradcheck
-    test_mha_gradcheck()
     
