@@ -38,7 +38,13 @@ Goals:
 
     b. Padding/Packing
 
-    c. GRPO
+    c. Flash Attention
 
-    d. Flash Attention
+    d. Rotary Position Embedding
+
+    e. JAX implementation
+
+    f. Debug exercise (claude corrupts)
+
+    d. GRPO
     

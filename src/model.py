@@ -60,8 +60,8 @@ class ScratchTransformer(nn.Module):
     def __init__(
         self,
         tokenizer,
-        num_blocks=8,
-        embed_dim=512,
+        num_blocks=16,
+        embed_dim=640,
         context_win=CONTEXT_WINDOW,
     ):
         super().__init__()

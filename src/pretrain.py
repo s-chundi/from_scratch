@@ -13,6 +13,9 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
 from wandb_helpers import wandb_log
 os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
+os.environ["HF_DATASETS_DISABLE_PROGRESS_BARS"] = "1"
+os.environ["HF_HUB_DISABLE_IMPLICIT_TOKEN"] = "1"
+os.environ["TORCH_CPP_LOG_LEVEL"] = "ERROR"
 # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
@@ -73,7 +76,7 @@ def train(rank, world_size, wandb_run, args): # TODO: make args instance
         print(f"Training args: {args}")
     
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=5e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     scheduler = lr_scheduler(optimizer)
 
 
@@ -110,11 +113,12 @@ def train(rank, world_size, wandb_run, args): # TODO: make args instance
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--batch_size", type=int, default=1)
-    parser.add_argument("--n_epochs", type=int, default=5)
+    parser.add_argument("--n_epochs", type=int, default=35)
     parser.add_argument("--num_test_generation", type=int, default=2)
-    parser.add_argument("--validate_every", type=int, default=15)
+    parser.add_argument("--validate_every", type=int, default=5)
     parser.add_argument("--num_validation_batches", type=int, default=20)
-    parser.add_argument("--norm_clip", type=int, default=1)
+    parser.add_argument("--norm_clip", type=int, default=3)
+    parser.add_argument("--lr", type=float, default=1e-3)
     args = parser.parse_args()
     
     settings = wandb.Settings(
