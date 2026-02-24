@@ -167,13 +167,12 @@ class MHAFunction(torch.autograd.Function):
         attn_scores = einops.einsum(qry, k, "... sq nh d, ... sk nh d -> ... nh sq sk") / math.sqrt(k.shape[-1])
         causal_attn_mask = torch.triu(
             torch.ones(
-                1,
                 qry.shape[1],
                 k.shape[1],
                 dtype=torch.bool,
                 device=k.device
             ),
-            diagonal=1
+            diagonal=k.shape[1] - qry.shape[1] + 1
         )
         
         attn_scores.masked_fill_(key_pad_mask[:, None, None, :], -1e10)

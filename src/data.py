@@ -45,9 +45,9 @@ class SmollmDataset(Dataset):
         super().__init__()
         self.tokenizer = tokenizer
         if split == "train":
-            ds = load_dataset("HuggingFaceTB/smollm-corpus", "cosmopedia-v2", split="train[:500]")
+            ds = load_dataset("HuggingFaceTB/smollm-corpus", "cosmopedia-v2", split="train[:30]")
         elif split == "test":
-            ds = load_dataset("HuggingFaceTB/smollm-corpus", "cosmopedia-v2", split="train[400:500]")
+            ds = load_dataset("HuggingFaceTB/smollm-corpus", "cosmopedia-v2", split="train[25:30]")
         else:
             raise ValueError(f"Invalid split: {split}")
 
@@ -70,4 +70,4 @@ class SmollmDataset(Dataset):
         return len(self.ds)
     
     def __getitem__(self, idx):
-        return torch.tensor(self.ds[idx]["token_ids"], device=self.device)
+        return torch.tensor(self.ds[idx]["token_ids"], device=self.device)[:self.context_window]

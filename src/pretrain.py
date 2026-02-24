@@ -94,7 +94,8 @@ def train(rank, world_size, wandb_run, args): # TODO: make args instance
                 {
                     "train/loss" : loss.item(), 
                     "train/grad_norm_pre_clip" : original_norm,
-                    "lr" : scheduler.get_last_lr()[0],
+                    "lr" : float(scheduler.get_last_lr()[0]),
+                    # **metadata,
                 }
             )
                     

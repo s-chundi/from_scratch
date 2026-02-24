@@ -32,9 +32,9 @@ Goals:
 
 4. Other things:
 
-    a. Actually good generation quality
+    a. ~~KV caching~~
     
-    a. KV caching
+    a. Actually good generation quality
 
     b. Padding/Packing
 

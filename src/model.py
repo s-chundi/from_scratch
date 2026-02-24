@@ -30,13 +30,26 @@ class CustomTransformerBlock(nn.Module):
             LinearModule(4 * embed_dim, embed_dim),
         )
         
-    def forward(self, x, key_pad_mask):
+        self.register_buffer("cache_k", None, persistent=False)
+        self.register_buffer("cache_v", None, persistent=False)
+        
+    def forward(self, x, key_pad_mask, use_cache):
         ln1x = self.ln1(x)
         qry = self.q_linear(ln1x)
         qry = einops.rearrange(qry, "... sq (nh dattn) -> ... sq nh dattn", nh=self.n_head)
         kv = self.kv_linear(ln1x)
         kv = einops.rearrange(kv, "... sq (twoxnh dattn) -> ... sq twoxnh dattn", twoxnh=self.n_head*2)
         k, v = torch.chunk(kv, 2, dim=-2)
+        
+        if use_cache:
+            if self.cache_k is None:
+                self.cache_k = k
+                self.cache_v = v
+            else:
+                self.cache_k = torch.cat((self.cache_k, k), dim=1)
+                self.cache_v = torch.cat((self.cache_v, v), dim=1)
+                k, v = self.cache_k, self.cache_v
+                
         out = MHAFunction.apply(qry, k, v, key_pad_mask)
         out = einops.rearrange(out, "... sq nh d -> ... sq (nh d)")
         x = out + x
@@ -73,44 +86,70 @@ class ScratchTransformer(nn.Module):
         self.final_ln = RMSNormModule(embed_dim)
         self.linear = LinearModule(embed_dim, tokenizer.n_vocab)
         
-    def forward(self, x):
+        self.cur_pos = 0
+        
+    def forward(self, x, use_cache = False):
         """
         x : Tokens
         """
         if len(x.shape) == 1:
             x = x.unsqueeze(0)
+        assert x.shape[1] <= CONTEXT_WINDOW
         key_pad_mask = x == self.tokenizer.eot_token
         x = self.embed(x)
-        x = x + self.pos_emb(torch.arange(x.shape[-2], device=x.device))
+        x = x + self.pos_emb(
+            torch.arange(start=self.cur_pos, end=self.cur_pos + x.shape[-2], device=x.device)
+        )
+        if use_cache:
+            self.cur_pos += x.shape[-2]
         metadata = defaultdict(float)
         for transformer in self.transformers:
             start_time = time.time()
-            x = transformer(x, key_pad_mask)
+            x = transformer(x, key_pad_mask, use_cache)
             metadata[f"{transformer.__class__.__name__}_time_ms"] += (time.time() - start_time) * 1000
         x = self.final_ln(x)
         return self.linear(x), metadata
-    
-    def generate(self, x, num_tokens):
-        for _ in range(num_tokens):
-            model_out, __ = self.forward(x[:, -CONTEXT_WINDOW:])
-            __, inds = torch.max(model_out[:, -1, :], dim=1)
-            x = torch.cat([x, inds.unsqueeze(-1)], dim=1)
         
-        out_texts = []
-        for batch_idx in range(x.shape[0]):
-            in_string = self.tokenizer.decode(x[batch_idx, -150:-num_tokens].tolist())
-            out_string = self.tokenizer.decode(x[batch_idx, -num_tokens:].tolist())
-            out_texts.append([f"Input:\n...{in_string}\nOutput:\n{out_string}"])
-        return out_texts
+    def generate(self, x, num_tokens):
+        self.reset_cache()
+        
+        x = x[:, -CONTEXT_WINDOW+num_tokens:]
+        with torch.no_grad():
+            model_out, _ = self.forward(x, use_cache=True)
+            _, inds = torch.max(model_out[:, -1, :], dim=1)
+            x = torch.cat([x, inds.unsqueeze(-1)], dim=1)
+            
+            for _ in range(num_tokens - 1):
+                model_out, __ = self.forward(x[:, -1:], use_cache=True)
+                __, inds = torch.max(model_out[:, -1, :], dim=1)
+                x = torch.cat([x, inds.unsqueeze(-1)], dim=1)
+                
+            out_texts = []
+            
+            for batch_idx in range(x.shape[0]):
+                in_string = self.tokenizer.decode(x[batch_idx, -150:-num_tokens].tolist())
+                out_string = self.tokenizer.decode(x[batch_idx, -num_tokens:].tolist())
+                out_texts.append([f"Input:\n...{in_string}\nOutput:\n{out_string}"])
+            
+            self.reset_cache()
+            return out_texts
+        
+    def reset_cache(self):
+        self.cur_pos = 0
+        for transformer in self.transformers:
+            transformer.cache_k = None
+            transformer.cache_v = None
+            
     
 if __name__ == "__main__":
     import tiktoken
     tokenizer = tiktoken.get_encoding("gpt2")
 
-    model = ScratchTransformer(tokenizer=tokenizer, num_blocks=2, embed_dim=64, context_win=128)
+    model = ScratchTransformer(tokenizer=tokenizer, num_blocks=2, embed_dim=128, context_win=128)
     token_ids = torch.randint(1, tokenizer.n_vocab, (2, 16))
-
-    logits, metadata = model(token_ids)
+    model.generate(token_ids, 3)
+    
+    logits, metadata = model(token_ids, )
     print(f"Forward: input {token_ids.shape} -> output {logits.shape}")
 
     loss = F.cross_entropy(logits[:, :-1].reshape(-1, tokenizer.n_vocab), token_ids[:, 1:].reshape(-1))
