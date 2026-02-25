@@ -3,6 +3,7 @@ from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from datasets import load_dataset
 import tiktoken
+import itertools
 
 def get_train_test_dataloader(tokenizer, context_window, args, distributed=True):
     train_dataset = SmollmDataset(
@@ -51,23 +52,45 @@ class SmollmDataset(Dataset):
         else:
             raise ValueError(f"Invalid split: {split}")
 
+        self.context_window = context_window
+        self.device = device
+        
         self.ds = ds.map(
             self.tokenize,
             batched=True,
-            remove_columns=["prompt", "text", "token_length", "audience", "format", "seed_data"])
-
-        self.context_window = context_window
-        self.device = device
+            remove_columns=ds.column_names,
+        )
     
     def tokenize(self, sample):
-        texts = [sample["prompt"][i] + sample["text"][i] for i in range(len(sample["prompt"]))]
-        token_ids = self.tokenizer.encode_batch(texts)
+        concatenate = lambda prompt, text : " ".join([prompt, text, "<|endoftext|>"])
+        texts = [concatenate(sample["prompt"][i], sample["text"][i])  for i in range(len(sample["prompt"]))]
+        token_ids = self.tokenizer.encode_batch(texts, allowed_special={"<|endoftext|>"})
+        token_ids_flattened = list(itertools.chain.from_iterable(token_ids))
+        packed = [
+            token_ids_flattened[self.context_window * i : self.context_window * (i + 1)]
+            for i in range(len(token_ids_flattened) // self.context_window)
+        ]
         return {
-            "token_ids": token_ids,
+            "token_ids": packed,
         }
         
     def __len__(self):
         return len(self.ds)
     
     def __getitem__(self, idx):
-        return torch.tensor(self.ds[idx]["token_ids"], device=self.device)[:self.context_window]
+        return torch.tensor(self.ds[idx]["token_ids"], dtype=torch.long, device=self.device)
+    
+
+if __name__ == "__main__":
+    import tiktoken
+    tokenizer = tiktoken.get_encoding("gpt2")
+    
+    ds = SmollmDataset(tokenizer, 2048)
+    sample = {
+        "prompt" : ["Hello, sup witchu" for _ in range(2000)],
+        "text" : ["Im alr, sup dude" for _ in range(2000)]
+    }
+    ds.tokenize(sample)
+    
+    print(len(ds))
+    ds.__getitem__(0)

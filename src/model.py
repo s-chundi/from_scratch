@@ -7,10 +7,10 @@ import time
 from collections import defaultdict
 from functional import *
 
-CONTEXT_WINDOW = 8192
+CONTEXT_WINDOW = 16384
     
     
-class CustomTransformerBlock(nn.Module):
+class TransformerBlock(nn.Module):
     
     def __init__(
         self,
@@ -33,7 +33,7 @@ class CustomTransformerBlock(nn.Module):
         self.register_buffer("cache_k", None, persistent=False)
         self.register_buffer("cache_v", None, persistent=False)
         
-    def forward(self, x, key_pad_mask, use_cache):
+    def forward(self, x, sequence_ids, use_cache):
         ln1x = self.ln1(x)
         qry = self.q_linear(ln1x)
         qry = einops.rearrange(qry, "... sq (nh dattn) -> ... sq nh dattn", nh=self.n_head)
@@ -50,7 +50,7 @@ class CustomTransformerBlock(nn.Module):
                 self.cache_v = torch.cat((self.cache_v, v), dim=1)
                 k, v = self.cache_k, self.cache_v
                 
-        out = MHAFunction.apply(qry, k, v, key_pad_mask)
+        out = MHAFunction.apply(qry, k, v, sequence_ids)
         out = einops.rearrange(out, "... sq nh d -> ... sq (nh d)")
         x = out + x
         return self.mlp(x) + x
@@ -79,7 +79,7 @@ class ScratchTransformer(nn.Module):
         )
         self.transformers = nn.ModuleList(
             [
-                CustomTransformerBlock(embed_dim)
+                TransformerBlock(embed_dim)
                 for i in range(num_blocks)
             ]
         )
@@ -87,7 +87,15 @@ class ScratchTransformer(nn.Module):
         self.linear = LinearModule(embed_dim, tokenizer.n_vocab)
         
         self.cur_pos = 0
-        
+    
+    def packing_helper(self, eottoken_mask):
+        B, S = eottoken_mask.shape
+        seq = torch.arange(1, S + 1).expand(B, S)
+        offset = seq * eottoken_mask
+        vals, inds = torch.cummax(offset, dim=1)
+        sequence_ids = vals - offset
+        return seq - sequence_ids - 1, sequence_ids
+    
     def forward(self, x, use_cache = False):
         """
         x : Tokens
@@ -95,17 +103,17 @@ class ScratchTransformer(nn.Module):
         if len(x.shape) == 1:
             x = x.unsqueeze(0)
         assert x.shape[1] <= CONTEXT_WINDOW
-        key_pad_mask = x == self.tokenizer.eot_token
+        eottoken_mask = x == self.tokenizer.eot_token
+        eottoken_mask = eottoken_mask | (torch.rand(*eottoken_mask.shape) > 0.9)
         x = self.embed(x)
-        x = x + self.pos_emb(
-            torch.arange(start=self.cur_pos, end=self.cur_pos + x.shape[-2], device=x.device)
-        )
+        pos_emb_input, sequence_ids = self.packing_helper(eottoken_mask)
+        x = x + self.pos_emb(pos_emb_input)
         if use_cache:
             self.cur_pos += x.shape[-2]
         metadata = defaultdict(float)
         for transformer in self.transformers:
             start_time = time.time()
-            x = transformer(x, key_pad_mask, use_cache)
+            x = transformer(x, sequence_ids, use_cache)
             metadata[f"{transformer.__class__.__name__}_time_ms"] += (time.time() - start_time) * 1000
         x = self.final_ln(x)
         return self.linear(x), metadata
@@ -143,11 +151,15 @@ class ScratchTransformer(nn.Module):
     
 if __name__ == "__main__":
     import tiktoken
+    from data import SmollmDataset
+    
     tokenizer = tiktoken.get_encoding("gpt2")
 
-    model = ScratchTransformer(tokenizer=tokenizer, num_blocks=2, embed_dim=128, context_win=128)
-    token_ids = torch.randint(1, tokenizer.n_vocab, (2, 16))
-    model.generate(token_ids, 3)
+    model = ScratchTransformer(tokenizer=tokenizer, num_blocks=2, embed_dim=128, context_win=16)
+    ds = SmollmDataset(tokenizer, 16)
+
+    token_ids = torch.stack([ds.__getitem__(i) for i in range(3)], dim=0)
+    # model.generate(token_ids, 3)
     
     logits, metadata = model(token_ids, )
     print(f"Forward: input {token_ids.shape} -> output {logits.shape}")

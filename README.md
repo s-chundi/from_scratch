@@ -33,10 +33,10 @@ Goals:
 4. Other things:
 
     a. ~~KV caching~~
-    
-    a. Actually good generation quality
 
     b. Padding/Packing
+    
+        * Doesn't work for kv caching, but possibly works for training
 
     c. Flash Attention
 

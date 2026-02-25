@@ -155,7 +155,7 @@ class EmbeddingModule(nn.Module):
     
 class MHAFunction(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, qry, k, v, key_pad_mask):
+    def forward(ctx, qry, k, v, sequence_ids):
         """
         Args:
             Q, K, V with shape B, S, Nh, D_attn
@@ -174,8 +174,8 @@ class MHAFunction(torch.autograd.Function):
             ),
             diagonal=k.shape[1] - qry.shape[1] + 1
         )
-        
-        attn_scores.masked_fill_(key_pad_mask[:, None, None, :], -1e10)
+        packing_mask = sequence_ids[:, None, None, :] != sequence_ids[:, None, :, None]
+        attn_scores.masked_fill_(packing_mask, -1e10)
         attn_scores.masked_fill_(causal_attn_mask, -1e10)
         attn_weights = F.softmax(attn_scores, dim=-1)
         out = einops.einsum(attn_weights, v, "... nh sq sk, ... sk nh d -> ... sq nh d")
