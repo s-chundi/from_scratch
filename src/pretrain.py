@@ -97,6 +97,7 @@ def train(rank, world_size, wandb_run, args): # TODO: make args instance
                 {
                     "train/loss" : loss.item(), 
                     "train/grad_norm_pre_clip" : original_norm,
+                    "train/epoch" : epoch,
                     "lr" : float(scheduler.get_last_lr()[0]),
                     # **metadata,
                 }
@@ -113,11 +114,11 @@ def train(rank, world_size, wandb_run, args): # TODO: make args instance
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--batch_size", type=int, default=1)
-    parser.add_argument("--n_epochs", type=int, default=35)
+    parser.add_argument("--n_epochs", type=int, default=20)
     parser.add_argument("--num_test_generation", type=int, default=2)
     parser.add_argument("--validate_every", type=int, default=5)
     parser.add_argument("--num_validation_batches", type=int, default=20)
-    parser.add_argument("--norm_clip", type=int, default=3)
+    parser.add_argument("--norm_clip", type=int, default=2)
     parser.add_argument("--lr", type=float, default=1e-3)
     args = parser.parse_args()
     
