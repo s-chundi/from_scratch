@@ -72,7 +72,7 @@ class ScratchTransformer(nn.Module):
             embedding_dim=self.embed_dim, 
             padding_idx=tokenizer.eot_token
         )
-        self.context_win = CONTEXT_WINDOW
+        self.context_win = context_win
         self.pos_emb = EmbeddingModule(
             num_embeddings=context_win,
             embedding_dim=embed_dim
@@ -94,7 +94,7 @@ class ScratchTransformer(nn.Module):
         offset = seq * eottoken_mask
         vals, inds = torch.cummax(offset, dim=1)
         sequence_ids = vals - offset
-        return seq - sequence_ids - 1, sequence_ids
+        return seq - sequence_ids - 1 + self.cur_pos, sequence_ids
     
     def forward(self, x, use_cache = False):
         """
@@ -102,9 +102,9 @@ class ScratchTransformer(nn.Module):
         """
         if len(x.shape) == 1:
             x = x.unsqueeze(0)
-        assert x.shape[1] <= CONTEXT_WINDOW
+        assert x.shape[1] <= self.context_win
         eottoken_mask = x == self.tokenizer.eot_token
-        eottoken_mask = eottoken_mask | (torch.rand(*eottoken_mask.shape) > 0.9)
+        # eottoken_mask = eottoken_mask | (torch.rand(*eottoken_mask.shape) > 0.9)
         x = self.embed(x)
         pos_emb_input, sequence_ids = self.packing_helper(eottoken_mask)
         x = x + self.pos_emb(pos_emb_input)
@@ -119,9 +119,10 @@ class ScratchTransformer(nn.Module):
         return self.linear(x), metadata
         
     def generate(self, x, num_tokens):
+        assert num_tokens < self.context_win
         self.reset_cache()
-        
-        x = x[:, -CONTEXT_WINDOW+num_tokens:]
+
+        x = x[:, -self.context_win+num_tokens:]
         with torch.no_grad():
             model_out, _ = self.forward(x, use_cache=True)
             _, inds = torch.max(model_out[:, -1, :], dim=1)
@@ -159,7 +160,7 @@ if __name__ == "__main__":
     ds = SmollmDataset(tokenizer, 16)
 
     token_ids = torch.stack([ds.__getitem__(i) for i in range(3)], dim=0)
-    # model.generate(token_ids, 3)
+    model.generate(token_ids, 3)
     
     logits, metadata = model(token_ids, )
     print(f"Forward: input {token_ids.shape} -> output {logits.shape}")
