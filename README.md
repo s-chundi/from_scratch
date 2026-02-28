@@ -34,17 +34,6 @@ Goals:
 
     a. ~~KV caching~~
 
-    b. Padding/Packing
-    
-        * Doesn't work for kv caching, but possibly works for training
+    b. ~~Packing~~
 
-    c. Flash Attention
-
-    d. Rotary Position Embedding
-
-    e. JAX implementation
-
-    f. Debug exercise (claude corrupts)
-
-    d. GRPO
-    
+    c. Rotary Position Embedding

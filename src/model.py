@@ -7,7 +7,7 @@ import time
 from collections import defaultdict
 from functional import *
 
-CONTEXT_WINDOW = 16384
+CONTEXT_WINDOW = 8192
     
     
 class TransformerBlock(nn.Module):
@@ -90,7 +90,7 @@ class ScratchTransformer(nn.Module):
     
     def packing_helper(self, eottoken_mask):
         B, S = eottoken_mask.shape
-        seq = torch.arange(1, S + 1).expand(B, S)
+        seq = torch.arange(1, S + 1, device=eottoken_mask.device).expand(B, S)
         offset = seq * eottoken_mask
         vals, inds = torch.cummax(offset, dim=1)
         sequence_ids = vals - offset
@@ -104,7 +104,6 @@ class ScratchTransformer(nn.Module):
             x = x.unsqueeze(0)
         assert x.shape[1] <= self.context_win
         eottoken_mask = x == self.tokenizer.eot_token
-        # eottoken_mask = eottoken_mask | (torch.rand(*eottoken_mask.shape) > 0.9)
         x = self.embed(x)
         pos_emb_input, sequence_ids = self.packing_helper(eottoken_mask)
         x = x + self.pos_emb(pos_emb_input)

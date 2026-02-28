@@ -128,7 +128,7 @@ class EmbeddingFunction(torch.autograd.Function):
         if ctx.needs_input_grad[1]:
             demb = torch.zeros_like(emb_matrix)
             grads_flattened = dout.reshape(-1, D)
-            demb.index_add_(0, token_ids.view(-1), grads_flattened)
+            demb.index_add_(0, token_ids.reshape(-1), grads_flattened)
             
         return None, demb
     
@@ -155,15 +155,7 @@ class EmbeddingModule(nn.Module):
     
 class MHAFunction(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, qry, k, v, sequence_ids):
-        """
-        Args:
-            Q, K, V with shape B, S, Nh, D_attn
-            key_pad_mask will be used in the future
-            
-        Returns:
-            tensor with shape B, S, Nh, D_attn
-        """
+    def compute_attn_weights(qry, k, v, sequence_ids):
         attn_scores = einops.einsum(qry, k, "... sq nh d, ... sk nh d -> ... nh sq sk") / math.sqrt(k.shape[-1])
         causal_attn_mask = torch.triu(
             torch.ones(
@@ -178,14 +170,30 @@ class MHAFunction(torch.autograd.Function):
         attn_scores.masked_fill_(packing_mask, -1e10)
         attn_scores.masked_fill_(causal_attn_mask, -1e10)
         attn_weights = F.softmax(attn_scores, dim=-1)
+        
+        return attn_weights
+    
+    @staticmethod
+    def forward(ctx, qry, k, v, sequence_ids):
+        """
+        Args:
+            Q, K, V with shape B, S, Nh, D_attn
+            key_pad_mask will be used in the future
+            
+        Returns:
+            tensor with shape B, S, Nh, D_attn
+        """
+        attn_weights = MHAFunction.compute_attn_weights(qry, k, v, sequence_ids)
         out = einops.einsum(attn_weights, v, "... nh sq sk, ... sk nh d -> ... sq nh d")
         
-        ctx.save_for_backward(attn_weights, v, k, qry)
+        ctx.save_for_backward(v, k, qry, sequence_ids)
         return out
     
     @staticmethod
     def backward(ctx, dout):
-        attn_weights, v, k, qry = ctx.saved_tensors
+        v, k, qry, sequence_ids = ctx.saved_tensors
+        attn_weights = MHAFunction.compute_attn_weights(qry, k, v, sequence_ids)
+        
         dim = v.shape[-1]
         dqry, dk, dv, dkpm = None, None, None, None
         

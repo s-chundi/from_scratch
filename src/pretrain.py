@@ -1,6 +1,7 @@
 import tiktoken
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from data import get_train_test_dataloader
 from model import ScratchTransformer, CONTEXT_WINDOW
@@ -16,8 +17,6 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
 os.environ["HF_DATASETS_DISABLE_PROGRESS_BARS"] = "1"
 os.environ["HF_HUB_DISABLE_IMPLICIT_TOKEN"] = "1"
 os.environ["TORCH_CPP_LOG_LEVEL"] = "ERROR"
-# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
 
 def setup_ddp(rank, world_size):
     os.environ["MASTER_ADDR"] = "localhost"
@@ -27,6 +26,8 @@ def setup_ddp(rank, world_size):
 
 def validate(model, test_dataloader, rank, wandb_run, args):
     criterion = nn.CrossEntropyLoss()
+    total_loss = 0.0
+    n_batches = 0
     for i, x in enumerate(test_dataloader):
         if i == args.num_validation_batches:
             break
@@ -34,7 +35,10 @@ def validate(model, test_dataloader, rank, wandb_run, args):
             x = x.to(rank)
             y_hat, metadata = model(x[:, :-1])
             loss = criterion(y_hat.transpose(-1, -2), x[:, 1:])
-            wandb_log(wandb_run, rank, {"test/loss" : loss.item()})
+            total_loss += loss.item()
+            n_batches += 1
+    if n_batches > 0:
+        wandb_log(wandb_run, rank, {"test/loss": total_loss / n_batches}, commit=False)
     
     for i, x in enumerate(test_dataloader):
         if i == args.num_test_generation:
@@ -64,7 +68,12 @@ def lr_scheduler(
         return max(0.05, 0.5 * (1.0 + math.cos(math.pi * num_cycles * 2.0 * progress)))
     
     return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda, last_epoch=-1)
-    
+
+def loss_fn(logits, gt, eot_mask):
+    loss = F.cross_entropy(logits, gt, reduction="none")
+    loss = loss.masked_fill(eot_mask, 0.0).sum() / (~eot_mask).sum()
+    return loss
+
 def train(rank, world_size, wandb_run, args): # TODO: make args instance
     setup_ddp(rank, world_size)
     tokenizer = tiktoken.get_encoding("gpt2")
@@ -75,7 +84,6 @@ def train(rank, world_size, wandb_run, args): # TODO: make args instance
         print(f"Model trainable parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
         print(f"Training args: {args}")
     
-    criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     scheduler = lr_scheduler(optimizer)
 
@@ -84,7 +92,8 @@ def train(rank, world_size, wandb_run, args): # TODO: make args instance
         for i, x in enumerate(train_dataloader):
             x = x.to(rank)
             y_hat, metadata = model(x[:, :-1])
-            loss = criterion(y_hat.transpose(-1, -2), x[:, 1:])
+            eot_mask = (x[:, :-1] == tokenizer.eot_token)
+            loss = loss_fn(y_hat.transpose(-1, -2), x[:, 1:], eot_mask)
             optimizer.zero_grad()
             loss.backward()
             
@@ -106,20 +115,20 @@ def train(rank, world_size, wandb_run, args): # TODO: make args instance
             if (i + 1) % args.validate_every == 0:
                 validate(model, test_dataloader, rank, wandb_run, args)
     
-        if rank == 0:
+        if rank == 0 and epoch % 5 == 4:
             os.makedirs("checkpoints", exist_ok=True)
             torch.save(model.module.state_dict(), f"checkpoints/model_{epoch}.pth")
     destroy_process_group()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--batch_size", type=int, default=1)
-    parser.add_argument("--n_epochs", type=int, default=20)
+    parser.add_argument("--batch_size", type=int, default=5)
+    parser.add_argument("--n_epochs", type=int, default=100)
     parser.add_argument("--num_test_generation", type=int, default=2)
-    parser.add_argument("--validate_every", type=int, default=5)
+    parser.add_argument("--validate_every", type=int, default=20)
     parser.add_argument("--num_validation_batches", type=int, default=20)
-    parser.add_argument("--norm_clip", type=int, default=2)
-    parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--norm_clip", type=int, default=1.5)
+    parser.add_argument("--lr", type=float, default=5e-4)
     args = parser.parse_args()
     
     settings = wandb.Settings(
