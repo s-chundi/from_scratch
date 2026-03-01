@@ -112,7 +112,7 @@ def train(rank, world_size, wandb_run, args): # TODO: make args instance
 
         validate(model, test_dataloader, rank, wandb_run, args)
     
-        if rank == 0 and epoch % 5 == 4:
+        if rank == 0:
             os.makedirs("checkpoints", exist_ok=True)
             torch.save(model.module.state_dict(), f"checkpoints/model_{epoch}.pth")
     destroy_process_group()
