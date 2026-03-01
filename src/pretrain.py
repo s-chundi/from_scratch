@@ -29,8 +29,6 @@ def validate(model, test_dataloader, rank, wandb_run, args):
     total_loss = 0.0
     n_batches = 0
     for i, x in enumerate(test_dataloader):
-        if i == args.num_validation_batches:
-            break
         with torch.no_grad():
             x = x.to(rank)
             y_hat, metadata = model(x[:, :-1])
@@ -101,19 +99,18 @@ def train(rank, world_size, wandb_run, args): # TODO: make args instance
             optimizer.step()
             scheduler.step()
             wandb_log(
-                wandb_run, 
-                rank, 
+                wandb_run,
+                rank,
                 {
-                    "train/loss" : loss.item(), 
+                    "train/loss" : loss.item(),
                     "train/grad_norm_pre_clip" : original_norm,
                     "train/epoch" : epoch,
                     "lr" : float(scheduler.get_last_lr()[0]),
                     # **metadata,
                 }
             )
-                    
-            if (i + 1) % args.validate_every == 0:
-                validate(model, test_dataloader, rank, wandb_run, args)
+
+        validate(model, test_dataloader, rank, wandb_run, args)
     
         if rank == 0 and epoch % 5 == 4:
             os.makedirs("checkpoints", exist_ok=True)
@@ -123,10 +120,8 @@ def train(rank, world_size, wandb_run, args): # TODO: make args instance
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--batch_size", type=int, default=5)
-    parser.add_argument("--n_epochs", type=int, default=100)
-    parser.add_argument("--num_test_generation", type=int, default=2)
-    parser.add_argument("--validate_every", type=int, default=20)
-    parser.add_argument("--num_validation_batches", type=int, default=20)
+    parser.add_argument("--n_epochs", type=int, default=10)
+    parser.add_argument("--num_test_generation", type=int, default=3)
     parser.add_argument("--norm_clip", type=int, default=1.5)
     parser.add_argument("--lr", type=float, default=5e-4)
     args = parser.parse_args()

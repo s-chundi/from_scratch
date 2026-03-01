@@ -59,6 +59,8 @@ def validate(rank, world_size, wandb_run, args):
                 x[:, :-num_generation_tokens], 
                 num_tokens=num_generation_tokens
             )
+            if rank == 0:
+                print(output)
             output_table = wandb.Table(data=output, columns=["Generations"])
             wandb_log(wandb_run, rank, {"generations" : output_table})
     
