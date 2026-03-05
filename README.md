@@ -14,11 +14,11 @@ Goals:
 
     b. ~~Add lr scheduling, gradient clipping etc.~~
 
-2. Successively break down high level pytorch modules to achieve a more "from scratch" implementation
+2. ~~Successively break down high level pytorch modules to achieve a more "from scratch" implementation~~
 
     a. ~~Multiheaded Attention~~
 
-3. Implement Forward and Backward pass for each module
+3. ~~Implement Forward and Backward pass for each module~~
 
     a. ~~Linear~~
 
@@ -36,4 +36,14 @@ Goals:
 
     b. ~~Packing~~
 
-    c. Rotary Position Embedding
+    c. ~~Top-p sampling~~
+    
+    d. ~~Rotary Position Embedding~~
+
+    e. SWIGLU
+
+5. Languages
+
+    a. JAX implementation
+
+    b. Triton Kernel for Flash Attention

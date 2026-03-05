@@ -69,7 +69,7 @@ def validate(rank, world_size, wandb_run, args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--batch_size", type=int, default=8)
+    parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--num_test_generation", type=int, default=20)
     parser.add_argument("--checkpoint", type=str)
     args = parser.parse_args()
