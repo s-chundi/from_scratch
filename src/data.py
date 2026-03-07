@@ -46,9 +46,9 @@ class SmollmDataset(Dataset):
         super().__init__()
         self.tokenizer = tokenizer
         if split == "train":
-            ds = load_dataset("HuggingFaceTB/smollm-corpus", "cosmopedia-v2", split="train[:150000]")
+            ds = load_dataset("HuggingFaceTB/smollm-corpus", "cosmopedia-v2", split="train[:600000]")
         elif split == "test":
-            ds = load_dataset("HuggingFaceTB/smollm-corpus", "cosmopedia-v2", split="train[150000:150500]")
+            ds = load_dataset("HuggingFaceTB/smollm-corpus", "cosmopedia-v2", split="train[600000:601000]")
         else:
             raise ValueError(f"Invalid split: {split}")
 

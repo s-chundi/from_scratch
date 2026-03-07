@@ -6,12 +6,14 @@ import math
 
 class LinearFunction(torch.autograd.Function):
     @staticmethod
+    @torch.amp.custom_fwd(device_type="cuda")
     def forward(ctx, inp, weight, bias):
         ctx.save_for_backward(inp, weight)
         
         return inp @ weight + bias
     
     @staticmethod
+    @torch.amp.custom_bwd(device_type="cuda")
     def backward(ctx, dout):
         inp, weight = ctx.saved_tensors
         
@@ -54,12 +56,14 @@ class LinearModule(nn.Module):
     
 class RMSNormFunction(torch.autograd.Function):
     @staticmethod
+    @torch.amp.custom_fwd(device_type="cuda")
     def forward(ctx, inp, gamma):
         rms = torch.sqrt(1e-8 + (inp ** 2).mean(dim=-1, keepdim=True))
         ctx.save_for_backward(inp, gamma, rms)
         return gamma * (inp / rms)
     
     @staticmethod
+    @torch.amp.custom_bwd(device_type="cuda")
     def backward(ctx, dout):
         inp, gamma, rms = ctx.saved_tensors
         x_norm = inp / rms
@@ -87,12 +91,14 @@ class RMSNormModule(nn.Module):
 class SILUFunction(torch.autograd.Function):
     """[Deprecated] Replaced by SWIGLU"""
     @staticmethod
+    @torch.amp.custom_fwd(device_type="cuda")
     def forward(ctx, inp):
         ctx.save_for_backward(inp)
         # Assumes linear already happened
         return inp * 1 / (1 + torch.exp(-inp))
     
     @staticmethod
+    @torch.amp.custom_bwd(device_type="cuda")
     def backward(ctx, dout):
         inp, = ctx.saved_tensors
         sigmoid_x = 1 / (1 + torch.exp(-inp))
@@ -112,6 +118,7 @@ class SILUModule(nn.Module):
 
 class SWIGLUFunction(torch.autograd.Function):
     @staticmethod
+    @torch.amp.custom_fwd(device_type="cuda")
     def forward(ctx, inp, w1, b1, w2, b2):
         u = inp @ w1 + b1
         v = inp @ w2 + b2
@@ -120,6 +127,7 @@ class SWIGLUFunction(torch.autograd.Function):
         return u * torch.sigmoid(u) * v
     
     @staticmethod
+    @torch.amp.custom_bwd(device_type="cuda")
     def backward(ctx, dout):
         inp, w1, b1, w2, b2 = ctx.saved_tensors
         
@@ -182,6 +190,7 @@ class SWIGLUModule(nn.Module):
 
 class EmbeddingFunction(torch.autograd.Function):
     @staticmethod
+    @torch.amp.custom_fwd(device_type="cuda")
     def forward(ctx, token_ids, emb_matrix):
         """
         Args: 
@@ -194,6 +203,7 @@ class EmbeddingFunction(torch.autograd.Function):
         return emb_matrix[token_ids, :]
 
     @staticmethod
+    @torch.amp.custom_bwd(device_type="cuda")
     def backward(ctx, dout):
         token_ids, emb_matrix = ctx.saved_tensors
         nv, D = emb_matrix.shape
@@ -247,6 +257,7 @@ class MHAFunction(torch.autograd.Function):
         return attn_weights
     
     @staticmethod
+    @torch.amp.custom_fwd(device_type="cuda")
     def forward(ctx, qry, k, v, sequence_ids):
         """
         Args:
@@ -263,6 +274,7 @@ class MHAFunction(torch.autograd.Function):
         return out
     
     @staticmethod
+    @torch.amp.custom_bwd(device_type="cuda")
     def backward(ctx, dout):
         v, k, qry, sequence_ids = ctx.saved_tensors
         attn_weights = MHAFunction.compute_attn_weights(qry, k, v, sequence_ids)
