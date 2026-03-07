@@ -40,7 +40,9 @@ Goals:
     
     d. ~~Rotary Position Embedding~~
 
-    e. SWIGLU
+    e. ~~SWIGLU~~
+
+    f. ~~bfloat16~~
 
 5. Languages
 

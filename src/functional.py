@@ -85,9 +85,11 @@ class RMSNormModule(nn.Module):
         return RMSNormFunction.apply(inp, self.gamma)
 
 class SILUFunction(torch.autograd.Function):
+    """[Deprecated] Replaced by SWIGLU"""
     @staticmethod
     def forward(ctx, inp):
         ctx.save_for_backward(inp)
+        # Assumes linear already happened
         return inp * 1 / (1 + torch.exp(-inp))
     
     @staticmethod
@@ -101,11 +103,82 @@ class SILUFunction(torch.autograd.Function):
             return None
 
 class SILUModule(nn.Module):
+    """Replaced by SWIGLU"""
     def __init__(self):
         super().__init__()
         
     def forward(self, inp):
         return SILUFunction.apply(inp)
+
+class SWIGLUFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, inp, w1, b1, w2, b2):
+        u = inp @ w1 + b1
+        v = inp @ w2 + b2
+        ctx.save_for_backward(inp, w1, b1, w2, b2)
+        
+        return u * torch.sigmoid(u) * v
+    
+    @staticmethod
+    def backward(ctx, dout):
+        inp, w1, b1, w2, b2 = ctx.saved_tensors
+        
+        u = inp @ w1 + b1
+        sigmoid_u = torch.sigmoid(u)    
+        v = inp @ w2 + b2
+        
+        dout_dsilu = dout * v
+        dsilu_du = sigmoid_u * (1 + u * (1 - sigmoid_u))
+        dout_du = dout_dsilu * dsilu_du
+        dout_dv = dout * u * sigmoid_u
+        
+        dinp, dw1, db1, dw2, db2 = None, None, None, None, None
+        if ctx.needs_input_grad[0]:
+            dout_v_dinp = einops.einsum(
+                dout_dv, w2, "... out, inp out -> ... inp"
+            )
+            dout_u_dinp = einops.einsum(
+                dout_du, w1, "... out, inp out -> ... inp"
+            )
+            dinp = dout_v_dinp + dout_u_dinp
+        if ctx.needs_input_grad[1]:
+            dw1 = einops.einsum(
+                dout_du, inp, "... out, ... inp -> inp out"
+            )
+        if ctx.needs_input_grad[2]:
+            db1 = einops.reduce(
+                dout_du, "... out -> 1 out", "sum"
+            )
+        if ctx.needs_input_grad[3]:
+            dw2 = einops.einsum(
+                dout_dv, inp, "... out, ... inp -> inp out"
+            )
+        if ctx.needs_input_grad[4]:
+            db2 = einops.reduce(
+                dout_dv, "... out -> 1 out", "sum"
+            )
+            
+        return dinp, dw1, db1, dw2, db2
+
+        
+class SWIGLUModule(nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super().__init__()
+        self.input_dim = input_dim
+        self.w1 = nn.Parameter(torch.empty(input_dim, output_dim))
+        self.b1 = nn.Parameter(torch.empty(1, output_dim))
+        self.w2 = nn.Parameter(torch.empty(input_dim, output_dim))
+        self.b2 = nn.Parameter(torch.empty(1, output_dim))
+
+        self.reset_parameters()
+        
+    def reset_parameters(self):
+        scale = 1 / math.sqrt(self.input_dim)
+        for params in [self.w1, self.b1, self.w2, self.b2]:
+            nn.init.uniform_(params, -scale, scale)
+        
+    def forward(self, inp):
+        return SWIGLUFunction.apply(inp, self.w1, self.b1, self.w2, self.b2)
 
 class EmbeddingFunction(torch.autograd.Function):
     @staticmethod

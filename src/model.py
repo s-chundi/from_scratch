@@ -25,8 +25,7 @@ class TransformerBlock(nn.Module):
         self.n_head = n_head
         self.mlp = nn.Sequential(
             RMSNormModule(embed_dim),
-            LinearModule(embed_dim, 4 * embed_dim),
-            SILUModule(),
+            SWIGLUModule(embed_dim, 4 * embed_dim),
             LinearModule(4 * embed_dim, embed_dim),
         )
         
@@ -47,13 +46,13 @@ class TransformerBlock(nn.Module):
         pos_emb_input: B x [0, 1, 2, 0, 1, 2, ...] (S)
         """
         B, S, Nh, Da = x.shape
-        # Note only accepts float if using mixed precision in the future
-        x_complex = torch.view_as_complex(x.reshape(B, S, Nh, -1, 2))
+
+        x_complex = torch.view_as_complex(x.reshape(B, S, Nh, -1, 2).float())
         x_rotated = x_complex * self.freqs[pos_emb_input][:, :, None, :]
         
         x_out = torch.view_as_real(x_rotated).reshape(B, S, Nh, Da)
         
-        return x_out
+        return x_out.to(x.dtype)
         
     def forward(self, x, sequence_ids, pos_emb_input, use_cache):
         """

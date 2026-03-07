@@ -31,8 +31,9 @@ def validate(model, test_dataloader, rank, wandb_run, args):
     for i, x in enumerate(test_dataloader):
         with torch.no_grad():
             x = x.to(rank)
-            y_hat, metadata = model(x[:, :-1])
-            loss = criterion(y_hat.transpose(-1, -2), x[:, 1:])
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=args.bf16):
+                y_hat, metadata = model(x[:, :-1])
+                loss = criterion(y_hat.transpose(-1, -2), x[:, 1:])
             total_loss += loss.item()
             n_batches += 1
     if n_batches > 0:
@@ -88,10 +89,11 @@ def train(rank, world_size, wandb_run, args): # TODO: make args instance
 
     for epoch in range(args.n_epochs):
         for i, x in enumerate(train_dataloader):
-            x = x.to(rank)
-            y_hat, metadata = model(x[:, :-1])
-            eot_mask = (x[:, :-1] == tokenizer.eot_token)
-            loss = loss_fn(y_hat.transpose(-1, -2), x[:, 1:], eot_mask)
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=args.bf16):
+                x = x.to(rank)
+                y_hat, metadata = model(x[:, :-1])
+                eot_mask = (x[:, :-1] == tokenizer.eot_token)
+                loss = loss_fn(y_hat.transpose(-1, -2), x[:, 1:], eot_mask)
             optimizer.zero_grad()
             loss.backward()
             
@@ -124,7 +126,10 @@ if __name__ == "__main__":
     parser.add_argument("--num_test_generation", type=int, default=3)
     parser.add_argument("--norm_clip", type=int, default=1.5)
     parser.add_argument("--lr", type=float, default=5e-4)
+    parser.add_argument("--devices", type=str, default="4,5,6,7")
+    parser.add_argument("--bf16", action="store_true")
     args = parser.parse_args()
+    os.environ["CUDA_VISIBLE_DEVICES"] = args.devices
     
     settings = wandb.Settings(
         show_errors=True,
