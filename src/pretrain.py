@@ -16,7 +16,7 @@ from torch.distributed import init_process_group, destroy_process_group
 from wandb_helpers import wandb_log
 from dotenv import load_dotenv
 load_dotenv()
-breakpoint()
+
 os.environ["HF_DATASETS_DISABLE_PROGRESS_BARS"] = "1"
 os.environ["HF_HUB_DISABLE_IMPLICIT_TOKEN"] = "1"
 os.environ["TORCH_CPP_LOG_LEVEL"] = "ERROR"
