@@ -13,4 +13,5 @@ src/harry_potter.txt
 checkpoints/*
 **scratch*.*
 **wandb/
+.claude/
 *.log

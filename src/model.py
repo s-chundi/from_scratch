@@ -36,7 +36,7 @@ class TransformerBlock(nn.Module):
         pos_angles = angles * seq_inds # S, D_attn / 2
         freqs = torch.polar(torch.ones_like(pos_angles), pos_angles)
         
-        self.register_buffer("freqs", freqs, persistent=True)
+        self.register_buffer("freqs", freqs, persistent=False)
         self.register_buffer("cache_k", torch.empty(0), persistent=False)
         self.register_buffer("cache_v", torch.empty(0), persistent=False)
     

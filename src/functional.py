@@ -167,8 +167,7 @@ class SWIGLUFunction(torch.autograd.Function):
             )
             
         return dinp, dw1, db1, dw2, db2
-
-        
+   
 class SWIGLUModule(nn.Module):
     def __init__(self, input_dim, output_dim):
         super().__init__()
@@ -309,3 +308,33 @@ class MHAFunction(torch.autograd.Function):
             ) / math.sqrt(dim)
             
         return dqry, dk, dv, dkpm
+    
+    
+if __name__ == "__main__":
+    inp = torch.randn(4, 20, 16, dtype=torch.double, requires_grad=True)
+    weight = torch.randn(16, 32, dtype=torch.double, requires_grad=True)
+    bias = torch.randn(1, 32, dtype=torch.double, requires_grad=True)
+    
+    if torch.autograd.gradcheck(LinearFunction.apply, (inp, weight, bias)):
+        print("Linear Passed")
+    
+    gamma = torch.randn(16, dtype=torch.double, requires_grad=True)
+    
+    if torch.autograd.gradcheck(RMSNormFunction.apply, (inp, gamma)):
+        print("RMSNorm Passed")
+    
+    weight_2 = torch.randn(16, 32, dtype=torch.double, requires_grad=True)
+    bias_2 = torch.randn(1, 32, dtype=torch.double, requires_grad=True)
+
+    if torch.autograd.gradcheck(SWIGLUFunction.apply, (inp, weight, bias, weight_2, bias_2)):
+        print("SWIGLU Passed")
+    
+    token_ids = torch.LongTensor([0, 1, 3, 5, 6, 7])
+    if torch.autograd.gradcheck(EmbeddingFunction.apply, (token_ids, weight)):
+        print("Embedding Passed")
+    
+    qry, k, v = [torch.randn(1, 8, 4, 16, dtype=torch.double, requires_grad=True) for _ in range(3)]
+    sequence_ids = torch.LongTensor([[0, 0, 0, 0, 4, 4, 4, 4]])
+    if torch.autograd.gradcheck(MHAFunction.apply, (qry, k, v, sequence_ids)):
+        print("MHA Passed")
+    

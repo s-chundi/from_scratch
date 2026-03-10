@@ -1,5 +1,5 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "6,7"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
 import tiktoken
 import torch
 import torch.nn as nn
@@ -73,11 +73,11 @@ def loss_fn(logits, gt, eot_mask):
     loss = loss.masked_fill(eot_mask, 0.0).sum() / (~eot_mask).sum()
     return loss
 
-def train(rank, world_size, wandb_run, args): # TODO: make args instance
+def train(rank, world_size, wandb_run, args):
     setup_ddp(rank, world_size)
     tokenizer = tiktoken.get_encoding("gpt2")
     train_dataloader, test_dataloader = get_train_test_dataloader(tokenizer, CONTEXT_WINDOW, args)
-    model = DDP(ScratchTransformer(tokenizer).to(rank), device_ids=[rank], find_unused_parameters=True)
+    model = DDP(ScratchTransformer(tokenizer).to(rank), device_ids=[rank], find_unused_parameters=True, broadcast_buffers=False)
     
     if rank == 0:
         print(f"Model trainable parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
@@ -121,7 +121,7 @@ def train(rank, world_size, wandb_run, args): # TODO: make args instance
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--batch_size", type=int, default=8)
+    parser.add_argument("--batch_size", type=int, default=6)
     parser.add_argument("--n_epochs", type=int, default=2)
     parser.add_argument("--num_test_generation", type=int, default=3)
     parser.add_argument("--norm_clip", type=int, default=1.5)
