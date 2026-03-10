@@ -14,6 +14,9 @@ import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
 from wandb_helpers import wandb_log
+from dotenv import load_dotenv
+load_dotenv()
+breakpoint()
 os.environ["HF_DATASETS_DISABLE_PROGRESS_BARS"] = "1"
 os.environ["HF_HUB_DISABLE_IMPLICIT_TOKEN"] = "1"
 os.environ["TORCH_CPP_LOG_LEVEL"] = "ERROR"
@@ -122,7 +125,7 @@ def train(rank, world_size, wandb_run, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--batch_size", type=int, default=6)
-    parser.add_argument("--n_epochs", type=int, default=2)
+    parser.add_argument("--n_epochs", type=int, default=4)
     parser.add_argument("--num_test_generation", type=int, default=3)
     parser.add_argument("--norm_clip", type=int, default=1.5)
     parser.add_argument("--lr", type=float, default=5e-4)
