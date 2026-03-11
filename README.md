@@ -44,7 +44,12 @@ Goals:
 
     f. ~~bfloat16~~
 
-5. Languages
+5. RL
+    a. Implement PPO
+
+    b. Implement GRPO
+
+6. Languages
 
     a. JAX implementation
 
