@@ -17,9 +17,6 @@ from wandb_helpers import wandb_log
 from dotenv import load_dotenv
 load_dotenv()
 
-os.environ["HF_DATASETS_DISABLE_PROGRESS_BARS"] = "1"
-os.environ["HF_HUB_DISABLE_IMPLICIT_TOKEN"] = "1"
-os.environ["TORCH_CPP_LOG_LEVEL"] = "ERROR"
 
 def setup_ddp(rank, world_size):
     os.environ["MASTER_ADDR"] = "localhost"
