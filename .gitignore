@@ -16,3 +16,4 @@ checkpoints/*
 .claude/
 *.log
 .env
+.DS_Store

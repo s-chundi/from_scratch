@@ -16,6 +16,7 @@ class TransformerBlock(nn.Module):
         self,
         embed_dim,
         n_head=4,
+        num_experts=1,
     ):
         super().__init__()
         assert embed_dim % n_head == 0
@@ -23,11 +24,23 @@ class TransformerBlock(nn.Module):
         self.kv_linear = LinearModule(embed_dim, embed_dim * 2)
         self.q_linear = LinearModule(embed_dim, embed_dim)
         self.n_head = n_head
-        self.mlp = nn.Sequential(
-            RMSNormModule(embed_dim),
-            SWIGLUModule(embed_dim, 4 * embed_dim),
-            LinearModule(4 * embed_dim, embed_dim),
-        )
+        self.num_experts = num_experts
+        if num_experts <= 1:
+            self.mlp = nn.Sequential(
+                RMSNormModule(embed_dim),
+                SWIGLUModule(embed_dim, 4 * embed_dim),
+                LinearModule(4 * embed_dim, embed_dim),
+            )
+        else:
+            self.ln2 = RMSNormModule(embed_dim)
+            self.router = LinearModule(embed_dim, num_experts)
+            self.experts = nn.ModuleList([
+                nn.Sequential(
+                    SWIGLUModule(embed_dim, 4 * embed_dim),
+                    LinearModule(4 * embed_dim, embed_dim),
+                )
+                for _ in range(num_experts)
+            ])
         
         # breakpoint()
         head_dim = embed_dim // n_head
@@ -84,7 +97,21 @@ class TransformerBlock(nn.Module):
         out = MHAFunction.apply(qry, k, v, sequence_ids)
         out = einops.rearrange(out, "... sq nh d -> ... sq (nh d)")
         x = out + x
-        return self.mlp(x) + x
+        
+        if self.num_experts == 1:
+            return self.mlp(x) + x
+        else:
+            x = self.ln2(x)
+            logits, inds = torch.max(self.router(x), dim=-1)
+            # inds is B, S with values in 0, ... num_experts - 1
+            # experts is List[nn.Module]
+            output = x
+            breakpoint()
+            for i, expert in enumerate(self.experts):
+                output[inds == i] += expert(x[inds == i])
+            return output
+            
+            
         
      
 class ScratchTransformer(nn.Module):
@@ -110,7 +137,10 @@ class ScratchTransformer(nn.Module):
         )
         self.transformers = nn.ModuleList(
             [
-                TransformerBlock(embed_dim)
+                TransformerBlock(
+                    embed_dim, 
+                    num_experts = 4 if i % 2 else 1,
+                )
                 for i in range(num_blocks)
             ]
         )
